@@ -17,10 +17,11 @@ from tables_styles import style_table, style_cell, style_data, style_header, sty
 # Login
 VALID_USERNAME_PASSWORD_PAIRS = [['naya', 'naya']]
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+server = app.server
 auth = dash_auth.BasicAuth(app, VALID_USERNAME_PASSWORD_PAIRS)
 
 msft = yf.Ticker('AAPL')
-history_range = msft.history(period="1y")
+history_range = msft.history(period="5y")
 df_history = history_range.reset_index(drop=False)
 df_history['Date'] = pd.to_datetime(df_history['Date']).dt.date
 first_open = df_history['Open'].iloc[0]
@@ -120,14 +121,7 @@ rsi_results = pd.concat([results, pd.DataFrame({"Analysis": "Relative Strength I
                                                 "Description": "The Relative Strength Index (RSI) is a momentum indicator that measures the strength of a stock's price movement. A reading above 70 indicates that the stock is overbought and may be due for a correction, while a reading below 30 indicates that the stock is oversold and may be a good buying opportunity.",
                                                 "Recommendation": recommendation}, index=[0])], ignore_index=True)
 
-
-
-
-
 recomm_df = pd.concat([macd_results, bb_results,rsi_results])
-
-
-
 
 selected_ind = list(df_industries[df_industries['Symbol'] == 'AZN']['Industries'])
 selected_ind_symbol = list(df_industries[df_industries['Industries'].isin(selected_ind)]['Symbol'].unique())
@@ -360,7 +354,7 @@ app.layout = html.Div([
 @app.callback(
     [Output(component_id='stock-table', component_property='data'),
      Output(component_id='symbol-dropdown', component_property='options'),
-     Output(component_id='symbol-dropdown', component_property='value'),
+     #Output(component_id='symbol-dropdown', component_property='value'),
      Output(component_id='chart', component_property='figure'),
      Output(component_id='industries-table', component_property='data'),
      Output(component_id='header_1', component_property='children'),
@@ -389,7 +383,7 @@ def update_table(selected_index, selected_chart, selected_symbol,start_date, end
     table_data = new_main_table_df.to_dict('records')
 
     symbol_options = [{'label': symbol, 'value': symbol} for symbol in new_df['Symbol'].unique()]
-    value = new_df['Symbol'].unique()[0]
+    #value = selected_index
 
     selected_ind = list(df_industries[df_industries['Symbol'] == selected_symbol]['Industries'])
     selected_ind_symbol = list(df_industries[df_industries['Industries'].isin(selected_ind)]['Symbol'].unique())
@@ -398,7 +392,7 @@ def update_table(selected_index, selected_chart, selected_symbol,start_date, end
 
 
     msft_new = yf.Ticker(selected_symbol)
-    history_range = msft_new.history(period="1y")
+    history_range = msft_new.history(period="5y")
     start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
     end_date = datetime.datetime.strptime(end_date, '%Y-%m-%d').date()
 
@@ -581,7 +575,7 @@ def update_table(selected_index, selected_chart, selected_symbol,start_date, end
 
     recommend_table_data = recomm_df.to_dict('records')
 
-    return table_data, symbol_options, value,  fig, second_table_data, header_1, header_2, stok_info_header,\
+    return table_data, symbol_options,  fig, second_table_data, header_1, header_2, stok_info_header,\
            recommend_table_data, header_3
 
 if __name__ == '__main__':

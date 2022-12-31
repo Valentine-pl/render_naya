@@ -2,14 +2,12 @@ import pandas as pd
 from pytickersymbols import PyTickerSymbols
 
 stock_data = PyTickerSymbols()
-print(stock_data)
 
 
 
 indexes = stock_data.get_all_indices()
 #indexes = ['DOW JONES', 'S&P 100', 'S&P 500', 'DAX', 'NASDAQ 100']
 indexes.sort()
-print(indexes)
 
 # Initialize an empty DataFrame
 df = pd.DataFrame()

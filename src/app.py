@@ -13,14 +13,15 @@ import yfinance as yf
 import dash_auth
 from stocks_import import indexes, df_symbols, df_industries
 from tables_styles import style_table, style_cell, style_data, style_header, style_data_conditional_for_recomm
+from analysis_func import func_macd, bb_func, rsi_func
 
 # Login
 VALID_USERNAME_PASSWORD_PAIRS = [['naya', 'naya']]
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(__name__, title='Stock App', external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server
 auth = dash_auth.BasicAuth(app, VALID_USERNAME_PASSWORD_PAIRS)
 
-msft = yf.Ticker('AAPL')
+msft = yf.Ticker('AZN')
 history_range = msft.history(period="5y")
 df_history = history_range.reset_index(drop=False)
 df_history['Date'] = pd.to_datetime(df_history['Date']).dt.date
@@ -34,103 +35,19 @@ else:
     fill_color = 'red'
 
 # MACD Analysis
-# Calculate the MACD using the close prices
-fast_period = 12
-slow_period = 26
-signal_period = 9
-# Calculate the fast and slow moving averages
-fast_ma = history_range["Close"].ewm(span=fast_period, adjust=False).mean()
-slow_ma = history_range["Close"].ewm(span=slow_period, adjust=False).mean()
-# Calculate the MACD line
-macd_line = fast_ma - slow_ma
-# Calculate the MACD signal line
-macd_signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
-# Calculate the MACD histogram
-macd_hist = macd_line - macd_signal_line
-# Create a table to store the results
-results = pd.DataFrame(columns=["Analysis", "Description", "Recommendation"])
-# Add a row to the table with the results of the MACD analysis
-macd_results = pd.concat([results, pd.DataFrame({"Analysis": "MACD",
-                                                 "Description": "The MACD is a trend-following momentum indicator that shows the relationship between two moving averages of a stock's price. A bullish MACD indicates that the stock is likely to continue rising, while a bearish MACD indicates that the stock is likely to continue falling.",
-                                                 "Recommendation": "Buy" if list(macd_hist)[-1] > 0 else "Sell"}, index=[0])], ignore_index=True)
-
-
+macd_results = func_macd(df_history)
 # Bollinger Bands Analysis
-#Calculate the Bollinger Bands using the close prices
-timeperiod = 20
-nbdevup = 2
-nbdevdn = 2
-matype = 0
-
-# Calculate the rolling mean and standard deviation of the close prices
-rolling_mean = df_history["Close"].rolling(window=timeperiod).mean()
-rolling_std = df_history["Close"].rolling(window=timeperiod).std()
-
-# Calculate the upper and lower Bollinger Bands
-upper_band = rolling_mean + nbdevup * rolling_std
-lower_band = rolling_mean - nbdevdn * rolling_std
-
-# Create a table to store the results
-results = pd.DataFrame(columns=["Analysis", "Description", "Recommendation"])
-
-# Add a row to the table with the results of the Bollinger Bands analysis
-if list(df_history["Close"])[-1] > list(upper_band)[-1]:
-    recommendation = "Sell"
-elif list(df_history["Close"])[-1] < list(lower_band)[-1]:
-    recommendation = "Buy"
-else:
-    recommendation = "Hold"
-
-bb_results = pd.concat([results, pd.DataFrame({"Analysis": "Bollinger Bands",
-                                                "Description": "Bollinger Bands are a technical analysis tool that uses moving averages and standard deviations to indicate overbought or oversold conditions in a stock. When the stock price is above the upper band, it is considered overbought, and when the stock price is below the lower band, it is considered oversold.",
-                                                "Recommendation": recommendation}, index=[0])], ignore_index=True)
+bb_results = bb_func(df_history)
 # RSI Analysis
-# Calculate the RSI using the close prices
-timeperiod = 14
+rsi_results = rsi_func(df_history)
+# Append Analysis Results Tables
+recomm_df = pd.concat([macd_results, bb_results, rsi_results])
 
-# Calculate the difference between the current close price and the previous close price
-diff = df_history["Close"].diff()
-
-# Calculate the up and down movements
-up_movements = diff.where(diff > 0, 0)
-down_movements = diff.where(diff < 0, 0)
-
-# Calculate the average up and down movements over the past timeperiod periods
-avg_up_movement = up_movements.rolling(timeperiod).mean()
-avg_down_movement = down_movements.rolling(timeperiod).mean().abs()
-
-# Calculate the relative strength
-relative_strength = avg_up_movement / avg_down_movement
-
-# Calculate the RSI
-rsi = 100 - (100 / (1 + relative_strength))
-
-# Create a table to store the results
-results = pd.DataFrame(columns=["Analysis", "Description", "Recommendation"])
-
-# Add a row to the table with the results of the RSI analysis
-if list(rsi)[-1] > 70:
-    recommendation = "Sell"
-elif list(rsi)[-1] < 30:
-    recommendation = "Buy"
-else:
-    recommendation = "Hold"
-
-
-rsi_results = pd.concat([results, pd.DataFrame({"Analysis": "Relative Strength Index (RSI)",
-                                                "Description": "The Relative Strength Index (RSI) is a momentum indicator that measures the strength of a stock's price movement. A reading above 70 indicates that the stock is overbought and may be due for a correction, while a reading below 30 indicates that the stock is oversold and may be a good buying opportunity.",
-                                                "Recommendation": recommendation}, index=[0])], ignore_index=True)
-
-recomm_df = pd.concat([macd_results, bb_results,rsi_results])
 
 selected_ind = list(df_industries[df_industries['Symbol'] == 'AZN']['Industries'])
 selected_ind_symbol = list(df_industries[df_industries['Industries'].isin(selected_ind)]['Symbol'].unique())
 df_second_table = df_symbols[df_symbols['Symbol'].isin(selected_ind_symbol)].reset_index(drop=True)
 df_second_table = df_second_table[['Symbol', 'Company Name', 'Country']]
-
-
-
-
 
 range_slicer = dcc.DatePickerRange(
     id='date-range-picker',
@@ -169,7 +86,8 @@ index_dropdown = dcc.Dropdown(
 
 symbol_dropdown = dcc.Dropdown(
                                 id='symbol-dropdown',
-                                options=[{'label': symbol, 'value': symbol} for symbol in df_symbols['Symbol'].unique()],
+                                options=[{'label': symbol, 'value': symbol} for symbol
+                                         in df_symbols['Symbol'].unique()],
                                 value=df_symbols['Symbol'][df_symbols['Stock Index'] == 'NASDAQ 100'].unique()[0],
                                 placeholder="Search Stock by selected index",
                                 searchable=True,
@@ -178,7 +96,8 @@ symbol_dropdown = dcc.Dropdown(
 
 main_table = dash_table.DataTable(
                                     id='stock-table',
-                                    columns=[{'name': col, 'id': col} for col in df_symbols.sort_values(by=['Symbol']).columns],
+                                    columns=[{'name': col, 'id': col} for col
+                                             in df_symbols.sort_values(by=['Symbol']).columns],
                                     page_size=12,
                                     fill_width=True,
                                     fixed_rows={'headers': False},
@@ -197,7 +116,8 @@ main_table = dash_table.DataTable(
 
 second_table = dash_table.DataTable(
                             id='industries-table',
-                            columns=[{'name': col, 'id': col} for col in df_second_table.sort_values(by=['Symbol']).columns],
+                            columns=[{'name': col, 'id': col} for col in
+                                     df_second_table.sort_values(by=['Symbol']).columns],
                             page_size=11,
                             fill_width=True,
                             fixed_rows={'headers': False},
@@ -219,7 +139,7 @@ recommend_table = dash_table.DataTable(
                             id='recommend-table',
                             columns=[{'name': col, 'id': col} for col in recomm_df.columns],
                             data=macd_results.to_dict('records'),
-                            #page_size=11,
+                            # page_size=11,
                             fill_width=True,
                             fixed_rows={'headers': False},
                             style_table=style_table,
@@ -229,8 +149,8 @@ recommend_table = dash_table.DataTable(
                             style_data_conditional=style_data_conditional_for_recomm,
                             style_cell_conditional=[
                                 {
-                                'if': {'column_id': 'Analysis'},
-                                'width': '150px'},
+                                    'if': {'column_id': 'Analysis'},
+                                    'width': '150px'},
                                 {
                                     'if': {'column_id': 'Recommendation'},
                                     'width': '150px'}
@@ -247,13 +167,14 @@ app.layout = html.Div([
     dbc.Row([
         # Row 1 - Col 1
         dbc.Col([html.Img(src='data:image/png;base64,{}'.format(logo_base64), style={'height': '90%',
-                                                                                     'width': '40%'})], width=3),
+                                                                                     'width': '40%',
+                                                                                     'margin-top': 20})], width=3),
         # Row 1 - Col 2
         dbc.Col([
                 html.Div([
                     html.H3('Stock Market Overview', style={'text-align': 'center', 'font-family': 'roboto',
-                                                            'fontSize': 40}),
-                    html.H5('Naya Python Middle Project', style={'text-align': 'center', 'font-family': 'roboto',
+                                                            'fontSize': 40, 'color': '#2c3e50'}),
+                    html.H5('💰Naya Python Middle Project💰', style={'text-align': 'center', 'font-family': 'roboto',
                                                                  'fontSize': 15}),
                 ])
                 ], style={'font-weight': 'bold', 'font-family': 'sans-serif', 'fontSize': 40}, width=3),
@@ -338,7 +259,7 @@ app.layout = html.Div([
             ])
         ], width=4),
         # Row 5 - Col 2
-        #dbc.Col([], width=1),
+        # dbc.Col([], width=1),
         # Row 5 - Col 3
         dbc.Col([
             html.Div([
@@ -354,7 +275,7 @@ app.layout = html.Div([
 @app.callback(
     [Output(component_id='stock-table', component_property='data'),
      Output(component_id='symbol-dropdown', component_property='options'),
-     #Output(component_id='symbol-dropdown', component_property='value'),
+     # Output(component_id='symbol-dropdown', component_property='value'),
      Output(component_id='chart', component_property='figure'),
      Output(component_id='industries-table', component_property='data'),
      Output(component_id='header_1', component_property='children'),
@@ -371,8 +292,7 @@ app.layout = html.Div([
      ]
 )
 
-def update_table(selected_index, selected_chart, selected_symbol,start_date, end_date):
-
+def update_table(selected_index, selected_chart, selected_symbol, start_date, end_date):
     header_1 = f'Stocks {selected_index} from Same Industry'
     header_2 = f'All Stocks in {selected_index}'
     header_3 = f'Trade Recommendations for {selected_symbol}'
@@ -383,7 +303,7 @@ def update_table(selected_index, selected_chart, selected_symbol,start_date, end
     table_data = new_main_table_df.to_dict('records')
 
     symbol_options = [{'label': symbol, 'value': symbol} for symbol in new_df['Symbol'].unique()]
-    #value = selected_index
+    # value = selected_index
 
     selected_ind = list(df_industries[df_industries['Symbol'] == selected_symbol]['Industries'])
     selected_ind_symbol = list(df_industries[df_industries['Industries'].isin(selected_ind)]['Symbol'].unique())
@@ -478,99 +398,12 @@ def update_table(selected_index, selected_chart, selected_symbol,start_date, end
                            text=f"Max: {y_max:.2f}", showarrow=True, arrowhead=7, arrowsize=2, font=dict(family='roboto', size=16, color='green'))
 
     # MACD Analysis
-    # Calculate the MACD using the close prices
-    fast_period = 12
-    slow_period = 26
-    signal_period = 9
-
-    # Calculate the fast and slow moving averages
-    fast_ma = df_history["Close"].ewm(span=fast_period, adjust=False).mean()
-    slow_ma = df_history["Close"].ewm(span=slow_period, adjust=False).mean()
-
-    # Calculate the MACD line
-    macd_line = fast_ma - slow_ma
-
-    # Calculate the MACD signal line
-    macd_signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
-
-    # Calculate the MACD histogram
-    macd_hist = macd_line - macd_signal_line
-
-    # Create a table to store the results
-    results = pd.DataFrame(columns=["Analysis", "Description", "Recommendation"])
-
-    # Add a row to the table with the results of the MACD analysis
-    macd_results = pd.concat([results, pd.DataFrame({"Analysis": "MACD",
-                                                     "Description": "The MACD is a trend-following momentum indicator that shows the relationship between two moving averages of a stock's price. A bullish MACD indicates that the stock is likely to continue rising, while a bearish MACD indicates that the stock is likely to continue falling.",
-                                                     "Recommendation": "Buy" if list(macd_hist)[-1] > 0 else "Sell"},
-                                                    index=[0])], ignore_index=True)
-
+    macd_results = func_macd(df_history)
     # Bollinger Bands Analysis
-    # Calculate the Bollinger Bands using the close prices
-    timeperiod = 20
-    nbdevup = 2
-    nbdevdn = 2
-    matype = 0
-
-    # Calculate the rolling mean and standard deviation of the close prices
-    rolling_mean = df_history["Close"].rolling(window=timeperiod).mean()
-    rolling_std = df_history["Close"].rolling(window=timeperiod).std()
-
-    # Calculate the upper and lower Bollinger Bands
-    upper_band = rolling_mean + nbdevup * rolling_std
-    lower_band = rolling_mean - nbdevdn * rolling_std
-
-    # Create a table to store the results
-    results = pd.DataFrame(columns=["Analysis", "Description", "Recommendation"])
-
-    # Add a row to the table with the results of the Bollinger Bands analysis
-    if list(df_history["Close"])[-1] > list(upper_band)[-1]:
-        recommendation = "Sell"
-    elif list(df_history["Close"])[-1] < list(lower_band)[-1]:
-        recommendation = "Buy"
-    else:
-        recommendation = "Hold"
-
-    bb_results = pd.concat([results, pd.DataFrame({"Analysis": "Bollinger Bands",
-                                                   "Description": "Bollinger Bands are a technical analysis tool that uses moving averages and standard deviations to indicate overbought or oversold conditions in a stock. When the stock price is above the upper band, it is considered overbought, and when the stock price is below the lower band, it is considered oversold.",
-                                                   "Recommendation": recommendation}, index=[0])], ignore_index=True)
-
+    bb_results = bb_func(df_history)
     # RSI Analysis
-    # Calculate the RSI using the close prices
-    timeperiod = 14
-
-    # Calculate the difference between the current close price and the previous close price
-    diff = df_history["Close"].diff()
-
-    # Calculate the up and down movements
-    up_movements = diff.where(diff > 0, 0)
-    down_movements = diff.where(diff < 0, 0)
-
-    # Calculate the average up and down movements over the past timeperiod periods
-    avg_up_movement = up_movements.rolling(timeperiod).mean()
-    avg_down_movement = down_movements.rolling(timeperiod).mean().abs()
-
-    # Calculate the relative strength
-    relative_strength = avg_up_movement / avg_down_movement
-
-    # Calculate the RSI
-    rsi = 100 - (100 / (1 + relative_strength))
-
-    # Create a table to store the results
-    results = pd.DataFrame(columns=["Analysis", "Description", "Recommendation"])
-
-    # Add a row to the table with the results of the RSI analysis
-    if list(rsi)[-1] > 70:
-        recommendation = "Sell"
-    elif list(rsi)[-1] < 30:
-        recommendation = "Buy"
-    else:
-        recommendation = "Hold"
-
-    rsi_results = pd.concat([results, pd.DataFrame({"Analysis": "Relative Strength Index (RSI)",
-                                                    "Description": "The Relative Strength Index (RSI) is a momentum indicator that measures the strength of a stock's price movement. A reading above 70 indicates that the stock is overbought and may be due for a correction, while a reading below 30 indicates that the stock is oversold and may be a good buying opportunity.",
-                                                    "Recommendation": recommendation}, index=[0])], ignore_index=True)
-
+    rsi_results = rsi_func(df_history)
+    # Append Analysis Results Tables
     recomm_df = pd.concat([macd_results, bb_results, rsi_results])
 
     recommend_table_data = recomm_df.to_dict('records')
